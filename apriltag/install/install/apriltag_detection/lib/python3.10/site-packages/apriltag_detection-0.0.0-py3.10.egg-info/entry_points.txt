@@ -1,0 +1,4 @@
+[console_scripts]
+apriltag_detection = apriltag_detection.apriltag_detection:main
+tf_publisher = apriltag_detection.tf_publisher:main
+
