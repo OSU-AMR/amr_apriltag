@@ -25,8 +25,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'apriltag_detection = apriltag_detection.apriltag_detection:main',
-            'tf_publisher = apriltag_detection.tf_publisher:main',
+            'apriltag_node = apriltag_detection.apriltag_node:main',
+            'webcam_node = apriltag_detection.webcam_node:main',
         ],
     },
 )

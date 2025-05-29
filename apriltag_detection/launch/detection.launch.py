@@ -7,8 +7,14 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='apriltag_detection',
-            executable='apriltag_detection',
-            name='apriltag_detection'
+            executable='apriltag_node',
+            name='apriltag_node'
+        ),
+        
+         Node(
+            package='apriltag_detection',
+            executable='webcam_node',
+            name='webcam_node'
         ),
         
         ExecuteProcess(
