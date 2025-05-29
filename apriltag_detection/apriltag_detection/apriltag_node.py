@@ -13,16 +13,16 @@ import math
 from rclpy.time import Time
 from rclpy.duration import Duration
 
-class AprilTagNodeSimpleTF(Node):
+class apriltag_node(Node):
     def __init__(self):
         super().__init__('apriltag_node')
-        self.get_logger().info("Starting AprilTag Node with TF broadcast + smoothing + color + TF cleanup")
+        self.get_logger().info("Starting AprilTag Node with TF broadcast + smoothing + color (ID-based) + TF cleanup")
 
         # === Parameters ===
         self._declare_and_get_params()
 
-        # === AprilTag Detectors ===
-        self.detectors = self._initialize_detectors()
+        # === AprilTag Detector ===
+        self.detector = self._initialize_detector() # Changed from self.detectors
 
         # === Tools ===
         self.bridge = CvBridge()
@@ -60,14 +60,14 @@ class AprilTagNodeSimpleTF(Node):
         self.declare_parameter('show_processed_video', True)
         self.add_on_set_parameters_callback(self.parameter_callback)
 
-    def _initialize_detectors(self):
-        families = ['tag36h11', 'tagStandard41h12', 'tagStandard52h13']
+    def _initialize_detector(self): # Renamed and modified
+        family = 'tag36h11'
         try:
-            detectors = {f: Detector(families=f) for f in families}
-            self.get_logger().info(f"Initialized detectors: {', '.join(detectors.keys())}")
-            return detectors
+            detector = Detector(families=family)
+            self.get_logger().info(f"Initialized detector for family: {family}")
+            return detector
         except Exception as e:
-            self.get_logger().error(f"Failed to initialize detectors: {e}")
+            self.get_logger().error(f"Failed to initialize detector for family {family}: {e}")
             raise
 
     def image_callback(self, msg: Image):
@@ -80,15 +80,15 @@ class AprilTagNodeSimpleTF(Node):
 
         current_visible_tags = set()
 
-        for family, detector in self.detectors.items():
-            try:
-                tags = detector.detect(gray, True, self.camera_params, self.tag_size)
-                for tag in tags:
-                    tag_id = tag.tag_id
-                    current_visible_tags.add(tag_id)
-                    self._process_tag(msg.header, tag, image, family)
-            except Exception as e:
-                self.get_logger().error(f"Detection error for {family}: {e}")
+        try:
+            # Detect tags using the single detector
+            tags = self.detector.detect(gray, True, self.camera_params, self.tag_size)
+            for tag in tags:
+                tag_id = tag.tag_id
+                current_visible_tags.add(tag_id)
+                self._process_tag(msg.header, tag, image) # Removed family argument
+        except Exception as e:
+            self.get_logger().error(f"Detection error: {e}") # Modified error log
 
         # Handle tag disappearance
         disappeared_tags = self.last_visible_tags - current_visible_tags
@@ -100,7 +100,7 @@ class AprilTagNodeSimpleTF(Node):
             cv2.imshow("AprilTag Detection", image)
             cv2.waitKey(1)
 
-    def _process_tag(self, header, tag, image, family):
+    def _process_tag(self, header, tag, image): # Removed family argument
         if tag.pose_R is None or tag.pose_t is None:
             return
 
@@ -109,7 +109,7 @@ class AprilTagNodeSimpleTF(Node):
         t = self.R_flip @ tag.pose_t.reshape(3, 1)
 
         # Smoothing
-        tag_key = f"{tag_id}"
+        tag_key = f"{tag_id}" # Already uses tag_id, so no change needed here
         alpha = self.smoothing_alpha
 
         if tag_key in self.tag_pose_cache:
@@ -123,16 +123,17 @@ class AprilTagNodeSimpleTF(Node):
         # TF Publish
         self._publish_tf(header, tag_id, R, smoothed_t)
 
-        # Drawing
+        # Drawing with color based on tag_id
         if self.get_parameter("show_processed_video").get_parameter_value().bool_value:
-            if family == "tag36h11":
-                color = (255, 0, 0)      # Blue = Floor
-            elif family == "tagStandard41h12":
-                color = (0, 0, 255)      # Red = AMRs
-            elif family == "tagStandard52h13":
-                color = (0, 255, 255)    # Yellow = Obstacles
-            else:
-                color = (0, 255, 0)      # Default Green
+            color = (0, 255, 0)  # Default Green
+
+            if tag_id == 100:      # Floor
+                color = (255, 0, 0)  # Blue
+            elif tag_id == 3:    # AMRs
+                color = (0, 0, 255)  # Red
+            elif tag_id == 50:   # Obstacles
+                color = (0, 255, 255) # Yellow
+            # else, color remains default Green for other tag36h11 IDs
 
             self._draw_tag(image, tag, color)
 
@@ -186,7 +187,7 @@ class AprilTagNodeSimpleTF(Node):
             for i in range(4):
                 pt1, pt2 = tuple(corners[i]), tuple(corners[(i + 1) % 4])
                 cv2.line(frame, pt1, pt2, draw_color_bgr, 2)
-            cv2.circle(frame, center, 5, (0, 0, 255), -1)
+            cv2.circle(frame, center, 5, (0, 0, 255), -1) # Center circle is still red, can be changed if needed
             cv2.putText(frame, f"ID: {tag.tag_id}", (corners[0][0] + 5, corners[0][1] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, draw_color_bgr, 2)
         except Exception as e:
@@ -210,7 +211,7 @@ class AprilTagNodeSimpleTF(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AprilTagNodeSimpleTF()
+    node = apriltag_node()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
