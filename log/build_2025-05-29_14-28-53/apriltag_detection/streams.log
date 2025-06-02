@@ -1,0 +1,49 @@
+[0.445s] Invoking command in '/home/hollis/AMR/src/amr_apriltag/apriltag_detection': PYTHONPATH=/home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/prefix_override:/home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 setup.py egg_info --egg-base ../build/apriltag_detection build --build-base /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build install --record /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/install.log --single-version-externally-managed
+[0.566s] running egg_info
+[0.566s] creating ../build/apriltag_detection/apriltag_detection.egg-info
+[0.567s] writing ../build/apriltag_detection/apriltag_detection.egg-info/PKG-INFO
+[0.567s] writing dependency_links to ../build/apriltag_detection/apriltag_detection.egg-info/dependency_links.txt
+[0.567s] writing entry points to ../build/apriltag_detection/apriltag_detection.egg-info/entry_points.txt
+[0.567s] writing requirements to ../build/apriltag_detection/apriltag_detection.egg-info/requires.txt
+[0.567s] writing top-level names to ../build/apriltag_detection/apriltag_detection.egg-info/top_level.txt
+[0.567s] writing manifest file '../build/apriltag_detection/apriltag_detection.egg-info/SOURCES.txt'
+[0.567s] reading manifest file '../build/apriltag_detection/apriltag_detection.egg-info/SOURCES.txt'
+[0.567s] adding license file 'LICENSE'
+[0.568s] writing manifest file '../build/apriltag_detection/apriltag_detection.egg-info/SOURCES.txt'
+[0.568s] running build
+[0.568s] running build_py
+[0.568s] creating /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build
+[0.568s] creating /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib
+[0.568s] creating /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection
+[0.568s] copying apriltag_detection/webcam_node.py -> /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection
+[0.568s] copying apriltag_detection/apriltag_node.py -> /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection
+[0.568s] copying apriltag_detection/__init__.py -> /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection
+[0.568s] running install
+[0.573s] /usr/lib/python3/dist-packages/setuptools/command/install.py:34: SetuptoolsDeprecationWarning: setup.py install is deprecated. Use build and pip and other standards-based tools.
+[0.573s]   warnings.warn(
+[0.573s] running install_lib
+[0.574s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection
+[0.574s] copying /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection/webcam_node.py -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection
+[0.574s] copying /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection/apriltag_node.py -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection
+[0.574s] copying /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build/lib/apriltag_detection/__init__.py -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection
+[0.574s] byte-compiling /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection/webcam_node.py to webcam_node.cpython-310.pyc
+[0.575s] byte-compiling /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection/apriltag_node.py to apriltag_node.cpython-310.pyc
+[0.576s] byte-compiling /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection/__init__.py to __init__.cpython-310.pyc
+[0.576s] running install_data
+[0.576s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/ament_index
+[0.576s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/ament_index/resource_index
+[0.576s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/ament_index/resource_index/packages
+[0.576s] copying resource/apriltag_detection -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/ament_index/resource_index/packages
+[0.576s] copying package.xml -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/apriltag_detection
+[0.576s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/apriltag_detection/launch
+[0.576s] copying launch/detection.launch.py -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/apriltag_detection/launch
+[0.576s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/apriltag_detection/config
+[0.576s] creating /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/apriltag_detection/rviz
+[0.576s] copying rviz/apriltag_rviz.rviz -> /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/share/apriltag_detection/rviz
+[0.576s] running install_egg_info
+[0.577s] Copying ../build/apriltag_detection/apriltag_detection.egg-info to /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages/apriltag_detection-0.0.0-py3.10.egg-info
+[0.577s] running install_scripts
+[0.587s] Installing apriltag_node script to /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/apriltag_detection
+[0.587s] Installing webcam_node script to /home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/apriltag_detection
+[0.587s] writing list of installed files to '/home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/install.log'
+[0.599s] Invoked command in '/home/hollis/AMR/src/amr_apriltag/apriltag_detection' returned '0': PYTHONPATH=/home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/prefix_override:/home/hollis/AMR/src/amr_apriltag/install/apriltag_detection/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 setup.py egg_info --egg-base ../build/apriltag_detection build --build-base /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/build install --record /home/hollis/AMR/src/amr_apriltag/build/apriltag_detection/install.log --single-version-externally-managed
