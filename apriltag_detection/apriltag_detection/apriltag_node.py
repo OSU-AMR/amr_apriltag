@@ -1,6 +1,6 @@
-import os
-import yaml
-
+import rclpy
+from rclpy.node import Node
+from rclpy.parameter import Parameter
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import TransformStamped
 import cv2
@@ -10,24 +10,8 @@ import numpy as np
 import tf2_ros
 from tf_transformations import quaternion_from_matrix, rotation_matrix
 import math
-
-import rclpy
-from rclpy.node import Node
-from rclpy.parameter import Parameter
 from rclpy.time import Time
 from rclpy.duration import Duration
-
-from ament_index_python.packages import get_package_share_directory
-
-APRIL_TAG_LOOKUP_SUB_PATH = "test_data/april_tag_lookup.yaml"
-
-ROBOT_TAG_COLOR = (172,16,48)
-MAP_TAG_COLOR = (255,165,0)
-OBSTACLE_TAG_COLOR = (0,39, 76)
-
-FRAME_STALE_TIME = 5 #seconds
-
-FRAME_DEFAULT_VECTOR = [0,-1,0]
 
 class apriltag_node(Node):
     def __init__(self):
@@ -36,9 +20,6 @@ class apriltag_node(Node):
 
         # === Parameters ===
         self._declare_and_get_params()
-
-        #load in data
-        self.load_in_tag_data()
 
         # === AprilTag Detector ===
         self.detector = self._initialize_detector() # Changed from self.detectors
@@ -53,8 +34,6 @@ class apriltag_node(Node):
         self.smoothing_alpha = 0.2
         self.last_visible_tags = set()
 
-        self.frame_tags = dict()
-
         # === Subscription ===
         self.subscription = self.create_subscription(
             Image,
@@ -67,36 +46,18 @@ class apriltag_node(Node):
         if self.get_parameter("show_processed_video").get_parameter_value().bool_value:
             self.get_logger().info("Video output enabled.")
 
-    def load_in_tag_data(self):
-        try:
-            config_path = os.path.join(get_package_share_directory("amr_central"), APRIL_TAG_LOOKUP_SUB_PATH)
-
-            with open(config_path) as config_file:
-                self.tag_lookup = yaml.safe_load(config_file)
-                self.registered_tags = self.tag_lookup["registered_tags"]
-                self.robot_tags = self.tag_lookup["robot_tags"]
-                self.map_tags = self.tag_lookup["map_tags"]
-                self.obstacle_tags = self.tag_lookup["obstacle_tags"]
-                self.corner_tag_distance = self.tag_lookup["corner_tag_distance"]
-            
-        except:
-            self.get_logger().error("Failed to load tag lookup file. Quitting!")
-            quit()
-
     def _declare_and_get_params(self):
         def declare_param(name, default): return self.declare_parameter(name, default).value
 
         self.image_topic = declare_param('subscribe_topic', '/camera/image_raw')
-        self.tag_size = declare_param('tag_size', 0.099)
+        self.tag_size = declare_param('tag_size', 0.096)
         self.camera_params = [
-            declare_param('camera_params.fx', 1746),
-            declare_param('camera_params.fy', 1769.1),
+            declare_param('camera_params.fx', 1351.3),
+            declare_param('camera_params.fy', 1368.6),
             declare_param('camera_params.cx', 973.12),
             declare_param('camera_params.cy', 562.49),
         ]
-
         self.declare_parameter('show_processed_video', True)
-        
         self.add_on_set_parameters_callback(self.parameter_callback)
 
     def _initialize_detector(self): # Renamed and modified
@@ -122,17 +83,11 @@ class apriltag_node(Node):
         try:
             # Detect tags using the single detector
             tags = self.detector.detect(gray, True, self.camera_params, self.tag_size)
-
-            post_detection_time = self.get_time_in_seconds()
-
             for tag in tags:
                 tag_id = tag.tag_id
                 current_visible_tags.add(tag_id)
-                self._process_tag(msg.header, tag, image, post_detection_time) # Removed family argument
-
-            #handle the map frame
-            self.process_map_frame(post_detection_time, msg.header)
-        except KeyError as e:
+                self._process_tag(msg.header, tag, image) # Removed family argument
+        except Exception as e:
             self.get_logger().error(f"Detection error: {e}") # Modified error log
 
         # Handle tag disappearance
@@ -145,139 +100,11 @@ class apriltag_node(Node):
             cv2.imshow("AprilTag Detection", image)
             cv2.waitKey(1)
 
-    def process_map_frame(self, time, header):
-
-        #remove staled tags
-        for tag in self.frame_tags.keys():
-            if(self.frame_tags[tag][1] + FRAME_STALE_TIME < time):
-                self.frame_tags.pop(tag)
-                self.get_logger().info(f"Tag {tag} has staled. Current time: {time}, tag time: {self.frame_tags[tag][1]}")
-
-        tag_set = self.frame_tags
-
-        #make sure there are enough staled keys to begin
-        if(len(self.frame_tags.keys()) < 3):
-            return
-        
-        if(len(self.frame_tags.keys()) > 4):
-            #too many tags
-            self.get_logger().warn("To many tags to complete frame detection! How?")
-
-            return
-        
-        #get rid of the farthest tag if there are four
-        if(len(self.frame_tags.keys()) == 4):
-            #track the tag with the worst sum of discrepancy from the others
-            smallest_discrepancy = None
-            smallest_discrepancy_index = 0
-
-            for tag in tag_set.keys():
-                #the tag's point
-                p4  = (float(tag_set[tag][0][0]), float(tag_set[tag][0][1]), float(tag_set[tag][0][2]))
-
-                # get the other three transforms
-                p1 = (float(tag_set[(tag + 1) % 4][0][0]), float(tag_set[(tag + 1) % 4][0][1]), float(tag_set[(tag + 1) % 4][0][2]))
-                p2 = (float(tag_set[(tag + 2) % 4][0][0]), float(tag_set[(tag + 2) % 4][0][1]), float(tag_set[(tag + 2) % 4][0][2]))
-                p3 = (float(tag_set[(tag + 3) % 4][0][0]), float(tag_set[(tag + 3) % 4][0][1]), float(tag_set[(tag + 3) % 4][0][2]))
-
-                dist = self.get_4th_point_distance(p1, p2, p3)
-                if(smallest_discrepancy is None) or (dist < smallest_discrepancy):
-                    smallest_discrepancy = dist
-                    smallest_discrepancy_index = tag
-
-            #all points colinear - do not pub
-            if(smallest_discrepancy is None):
-                self.get_logger().warn(f"Colinear detections, not updating map frame. {(float(tag_set[tag_set.keys()[0]][0][0]), float(tag_set[tag_set.keys()[0]][0][1]), float(tag_set[tag_set.keys()[0]][0][2]))}, {(float(tag_set[tag_set.keys()[1]][0][0]), float(tag_set[tag_set.keys()[1]][0][1]), float(tag_set[tag_set.keys()[1]][0][2]))}, {(float(tag_set[tag_set.keys()[2]][0][0]), float(tag_set[tag_set.keys()[2]][0][1]), float(tag_set[tag_set.keys()[2]][0][2]))}")
-                return
-            
-            #keep the best combination (remove the points with the shortest perpendiculr distance)
-            self.tag_set.pop(smallest_discrepancy_index)
-
-        #get the best plane
-        k1, k2 ,k3 = self.find_plane_coefficients(
-            (float(tag_set[list(tag_set.keys())[0]][0][0]), float(tag_set[list(tag_set.keys())[0]][0][1]), float(tag_set[list(tag_set.keys())[0]][0][2])),
-            (float(tag_set[list(tag_set.keys())[1]][0][0]), float(tag_set[list(tag_set.keys())[1]][0][1]), float(tag_set[list(tag_set.keys())[1]][0][2])),
-            (float(tag_set[list(tag_set.keys())[2]][0][0]), float(tag_set[list(tag_set.keys())[2]][0][1]), float(tag_set[list(tag_set.keys())[2]][0][2])))
-        
-        if(k1 is None):
-            #detections are colinear
-            self.get_logger().warn(f"Colinear detections, not updating map frame. {(float(tag_set[tag_set.keys()[0]][0][0]), float(tag_set[tag_set.keys()[0]][0][1]), float(tag_set[tag_set.keys()[0]][0][2]))}, {(float(tag_set[tag_set.keys()[1]][0][0]), float(tag_set[tag_set.keys()[1]][0][1]), float(tag_set[tag_set.keys()[1]][0][2]))}, {(float(tag_set[tag_set.keys()[2]][0][0]), float(tag_set[tag_set.keys()[2]][0][1]), float(tag_set[tag_set.keys()[2]][0][2]))}")
-            return
-
-        #determine the center point of the plane - find cp of two points on the corner from each other
-        center = np.array((0,0,0))
-        if(0 in tag_set.keys() and 2 in tag_set.keys()):
-            center = (np.array((float(tag_set[0][0][0]), float(tag_set[0][0][1]), float(tag_set[0][0][2]))) + np.array((float(tag_set[2][0][0]), float(tag_set[2][0][1]), float(tag_set[2][0][2])))) / 2
-        else:
-            center = (np.array((float(tag_set[1][0][0]), float(tag_set[1][0][1]), float(tag_set[2][0][2]))) + np.array((float(tag_set[3][0][0]), float(tag_set[3][0][1]), float(tag_set[3][0][2])))) / 2
-
-        self.get_logger().info(f"Center: {center[0]}, {center[1]}, {center[2]}")
-
-        #determine the plane's angle relative to the camera
-        quaternion = self.get_vector_quaternion([k1, k2, k3])
-
-        self.publish_frame_tf(header, quaternion, [center[0], center[1], center[2]])
-
-    def get_vector_quaternion(self, plane):
-
-        #normalize the plane's normal vector
-        norm_plane = np.array(plane) /  np.linalg.norm(plane)
-
-        #angle between the vectors
-        theta = np.arccos(np.dot(norm_plane, np.array(FRAME_DEFAULT_VECTOR)))
-
-        #axis of rotations
-        rot_axis = np.cross(norm_plane, np.array(FRAME_DEFAULT_VECTOR))
-
-        #rotation quaternion
-        return [np.cos(theta / 2), rot_axis[0] * np.sin(theta / 2), rot_axis[1]  * np.sin(theta / 2), rot_axis[2]  * np.sin(theta / 2)]
-
-    def find_plane_coefficients(self, p1, p2, p3):
-        #whos a good llm
-
-        # Convert points to numpy arrays
-        p1, p2, p3 = np.array(p1), np.array(p2), np.array(p3)
-        
-        # Create matrix A with the coordinates of the three points
-        A = np.vstack([p1, p2, p3])  # Shape (3, 3)
-
-        #colinear points
-        if(np.linalg.matrix_rank(A) != 3):
-            return None, None, None
-        
-        # Create vector b which is [1, 1, 1]
-        b = np.ones(3)
-        
-        # Solve for [k1, k2, k3] in A @ [k1, k2, k3] = b
-        k = np.linalg.solve(A, b)
-        
-        return k[0], k[1], k[2]
-
-    def get_4th_point_distance(self, p1, p2, p3, p4):
-
-        #solve the plane for the first three points
-        k1, k2, k3 = self.find_plane_coefficients(p1, p2, p3)
-        
-        if(k1 is None):
-            #colinear points
-            return None
-
-        #get the parallel plane that the fourth point lies on 
-        k4 = k1 * p4[0] + k2 * p4[1] + k3 * p4[2]
-
-        #get the vector length between the two planes
-        dist = k4 * pow((k1**2 + k2**2 + k3**2),.5) 
-
-        return dist
-
-
-
-    def _process_tag(self, header, tag, image, time): # Removed family argument
+    def _process_tag(self, header, tag, image): # Removed family argument
         if tag.pose_R is None or tag.pose_t is None:
             return
 
         tag_id = tag.tag_id
-
         R = self.R_flip @ tag.pose_R
         t = self.R_flip @ tag.pose_t.reshape(3, 1)
 
@@ -293,22 +120,6 @@ class apriltag_node(Node):
 
         self.tag_pose_cache[tag_key] = smoothed_t
 
-        #don't show unregistered tags
-        if not (tag_id in self.registered_tags):
-            return
-
-        self.get_logger().info(f"Here {tag_id}, {self.map_tags}, {tag_id in self.map_tags}")
-
-
-        if(tag_id in self.map_tags):
-
-            #append to the frame detection
-            self.frame_tags[self.tag_lookup[f"tag_{tag_id}"]["corner"]] = (t, time)
-
-        self.get_logger().info(f"tag keys {self.frame_tags.keys()}")
-
-
-
         # TF Publish
         self._publish_tf(header, tag_id, R, smoothed_t)
 
@@ -316,12 +127,13 @@ class apriltag_node(Node):
         if self.get_parameter("show_processed_video").get_parameter_value().bool_value:
             color = (0, 255, 0)  # Default Green
 
-            if tag_id in self.map_tags:      # map
-                color = MAP_TAG_COLOR  
-            elif tag_id in self.robot_tags:    # AMRs
-                color = ROBOT_TAG_COLOR 
-            elif tag_id in self.obstacle_tags:   #obstalces
-                color = OBSTACLE_TAG_COLOR
+            if tag_id == 100:      # Floor
+                color = (255, 0, 0)  # Blue
+            elif tag_id == 3:    # AMRs
+                color = (0, 0, 255)  # Red
+            elif tag_id == 50:   # Obstacles
+                color = (0, 255, 255) # Yellow
+            # else, color remains default Green for other tag36h11 IDs
 
             self._draw_tag(image, tag, color)
 
@@ -347,25 +159,6 @@ class apriltag_node(Node):
             self.tf_broadcaster.sendTransform(t_msg)
         except Exception as e:
             self.get_logger().error(f"TF publish error for tag {tag_id}: {e}")
-
-    def publish_frame_tf(self, header ,quat, center):
-        try:
-            t_msg = TransformStamped()
-            t_msg.header.stamp = header.stamp
-            t_msg.header.frame_id = header.frame_id
-            t_msg.child_frame_id = f"map"
-
-            t_msg.transform.translation.x = float(center[0])
-            t_msg.transform.translation.y = float(center[1])
-            t_msg.transform.translation.z = float(center[2])
-            t_msg.transform.rotation.x = quat[3]
-            t_msg.transform.rotation.y = quat[0]
-            t_msg.transform.rotation.z = quat[1]
-            t_msg.transform.rotation.w = quat[2]
-
-            self.tf_broadcaster.sendTransform(t_msg)
-        except Exception as e:
-            self.get_logger().error(f"TF publish error for map: {e}")
 
     def _publish_stale_tf(self, header, tag_id):
         try:
@@ -415,11 +208,6 @@ class apriltag_node(Node):
                 self.get_logger().info(f"Live display toggled to: {param.value}")
         return rclpy.parameter.SetParametersResult(successful=True)
 
-    def get_time_in_seconds(self):
-        #returns the time in second
-        tuple_time = self.get_clock().now().seconds_nanoseconds()
-            
-        return tuple_time[0] + tuple_time[1] * .000000001
 
 def main(args=None):
     rclpy.init(args=args)
