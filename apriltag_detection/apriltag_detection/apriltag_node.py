@@ -50,12 +50,12 @@ class apriltag_node(Node):
         def declare_param(name, default): return self.declare_parameter(name, default).value
 
         self.image_topic = declare_param('subscribe_topic', '/camera/image_raw')
-        self.tag_size = declare_param('tag_size', 0.096)
+        self.tag_size = declare_param('tag_size', 0.079375)
         self.camera_params = [
-            declare_param('camera_params.fx', 1351.3),
-            declare_param('camera_params.fy', 1368.6),
-            declare_param('camera_params.cx', 973.12),
-            declare_param('camera_params.cy', 562.49),
+            declare_param('camera_params.fx', 940.62),
+            declare_param('camera_params.fy', 946.23),
+            declare_param('camera_params.cx', 633.94),
+            declare_param('camera_params.cy', 374.22),
         ]
         self.declare_parameter('show_processed_video', True)
         self.add_on_set_parameters_callback(self.parameter_callback)
