@@ -1,4 +1,0 @@
-[console_scripts]
-apriltag_node = apriltag_detection.apriltag_node:main
-webcam_node = apriltag_detection.webcam_node:main
-
