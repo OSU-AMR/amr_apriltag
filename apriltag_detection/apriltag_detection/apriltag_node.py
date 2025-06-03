@@ -27,7 +27,7 @@ OBSTACLE_TAG_COLOR = (0,39, 76)
 
 FRAME_STALE_TIME = 5 #seconds
 
-FRAME_DEFAULT_VECTOR = [0,-1,0]
+FRAME_DEFAULT_VECTOR = [0,0,-1]
 
 class apriltag_node(Node):
     def __init__(self):
@@ -87,13 +87,22 @@ class apriltag_node(Node):
         def declare_param(name, default): return self.declare_parameter(name, default).value
 
         self.image_topic = declare_param('subscribe_topic', '/camera/image_raw')
-        self.tag_size = declare_param('tag_size', 0.099)
+
+        self.tag_size = declare_param('tag_size', 0.079375)
+        #self.camera_params = [
+        #    declare_param('camera_params.fx', 940.62),
+        #    declare_param('camera_params.fy', 946.23),
+        #    declare_param('camera_params.cx', 633.94),
+        #    declare_param('camera_params.cy', 374.22),
+        #]
+
         self.camera_params = [
-            declare_param('camera_params.fx', 1746),
-            declare_param('camera_params.fy', 1769.1),
-            declare_param('camera_params.cx', 973.12),
-            declare_param('camera_params.cy', 562.49),
+            declare_param('camera_params.fx', 921.62),
+            declare_param('camera_params.fy', 923.23),
+            declare_param('camera_params.cx', 614.94),
+            declare_param('camera_params.cy', 360.22),
         ]
+
 
         self.declare_parameter('show_processed_video', True)
         
@@ -180,7 +189,7 @@ class apriltag_node(Node):
                 p2 = (float(tag_set[(tag + 2) % 4][0][0]), float(tag_set[(tag + 2) % 4][0][1]), float(tag_set[(tag + 2) % 4][0][2]))
                 p3 = (float(tag_set[(tag + 3) % 4][0][0]), float(tag_set[(tag + 3) % 4][0][1]), float(tag_set[(tag + 3) % 4][0][2]))
 
-                dist = self.get_4th_point_distance(p1, p2, p3)
+                dist = self.get_4th_point_distance(p1, p2, p3, p4)
                 if(smallest_discrepancy is None) or (dist < smallest_discrepancy):
                     smallest_discrepancy = dist
                     smallest_discrepancy_index = tag
@@ -191,7 +200,7 @@ class apriltag_node(Node):
                 return
             
             #keep the best combination (remove the points with the shortest perpendiculr distance)
-            self.tag_set.pop(smallest_discrepancy_index)
+            tag_set.pop(smallest_discrepancy_index)
 
         #get the best plane
         k1, k2 ,k3 = self.find_plane_coefficients(
@@ -224,14 +233,25 @@ class apriltag_node(Node):
         norm_plane = np.array(plane) /  np.linalg.norm(plane)
 
         #angle between the vectors
-        theta = np.arccos(np.dot(norm_plane, np.array(FRAME_DEFAULT_VECTOR)))
+        #theta = np.arccos(np.dot(norm_plane, np.array(FRAME_DEFAULT_VECTOR)))
 
         #axis of rotations
-        rot_axis = np.cross(norm_plane, np.array(FRAME_DEFAULT_VECTOR))
+        #rot_axis = np.cross( np.array(FRAME_DEFAULT_VECTOR), norm_plane)
 
         #rotation quaternion
-        return [np.cos(theta / 2), rot_axis[0] * np.sin(theta / 2), rot_axis[1]  * np.sin(theta / 2), rot_axis[2]  * np.sin(theta / 2)]
+        #return [np.cos(theta / 2), rot_axis[0] * np.sin(theta / 2), rot_axis[1]  * np.sin(theta / 2), rot_axis[2]  * np.sin(theta / 2)]
 
+
+
+        dp = np.dot(norm_plane, np.array(FRAME_DEFAULT_VECTOR))
+        rot_vector = np.cross(np.array(FRAME_DEFAULT_VECTOR), norm_plane)
+        quat = np.array([1+dp , rot_vector[0], rot_vector[1], rot_vector[2]])
+        quat = quat /np.linalg.norm(quat)
+        return quat
+   
+   
+   
+   
     def find_plane_coefficients(self, p1, p2, p3):
         #whos a good llm
 
@@ -263,7 +283,7 @@ class apriltag_node(Node):
             return None
 
         #get the parallel plane that the fourth point lies on 
-        k4 = k1 * p4[0] + k2 * p4[1] + k3 * p4[2]
+        k4 = abs(k1 * p4[0] + k2 * p4[1] + k3 * p4[2])
 
         #get the vector length between the two planes
         dist = k4 * pow((k1**2 + k2**2 + k3**2),.5) 
@@ -353,15 +373,15 @@ class apriltag_node(Node):
             t_msg = TransformStamped()
             t_msg.header.stamp = header.stamp
             t_msg.header.frame_id = header.frame_id
-            t_msg.child_frame_id = f"map"
+            t_msg.child_frame_id = "map"
 
             t_msg.transform.translation.x = float(center[0])
             t_msg.transform.translation.y = float(center[1])
             t_msg.transform.translation.z = float(center[2])
-            t_msg.transform.rotation.x = quat[3]
-            t_msg.transform.rotation.y = quat[0]
-            t_msg.transform.rotation.z = quat[1]
-            t_msg.transform.rotation.w = quat[2]
+            t_msg.transform.rotation.x = quat[1]
+            t_msg.transform.rotation.y = quat[2]
+            t_msg.transform.rotation.z = quat[3]
+            t_msg.transform.rotation.w = quat[0]
 
             self.tf_broadcaster.sendTransform(t_msg)
         except Exception as e:

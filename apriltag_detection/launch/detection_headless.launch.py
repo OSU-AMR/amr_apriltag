@@ -14,12 +14,9 @@ def generate_launch_description():
          Node(
             package='apriltag_detection',
             executable='webcam_node',
-            name='webcam_node'
+            name='webcam_node',
+            parameters=[{"show_processed_video": False}]
         ),
         
-        ExecuteProcess(
-            cmd=['rviz2', '-d', 'install/apriltag_detection/share/apriltag_detection/rviz/apriltag_rviz.rviz'],
-            output='screen'
-        )
     ])
 
