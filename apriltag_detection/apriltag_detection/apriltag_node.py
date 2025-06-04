@@ -222,8 +222,6 @@ class apriltag_node(Node):
         else:
             center = (np.array((float(tag_set[1][0][0]), float(tag_set[1][0][1]), float(tag_set[2][0][2]))) + np.array((float(tag_set[3][0][0]), float(tag_set[3][0][1]), float(tag_set[3][0][2])))) / 2
 
-        self.get_logger().info(f"Center: {center[0]}, {center[1]}, {center[2]}")
-
         #determine the plane's angle relative to the camera
         quaternion = self.get_vector_quaternion([k1, k2, k3])
 
@@ -234,24 +232,19 @@ class apriltag_node(Node):
         #normalize the plane's normal vector
         norm_plane = np.array(plane) /  np.linalg.norm(plane)
 
-        #angle between the vectors
-        #theta = np.arccos(np.dot(norm_plane, np.array(FRAME_DEFAULT_VECTOR)))
-
-        #axis of rotations
-        #rot_axis = np.cross( np.array(FRAME_DEFAULT_VECTOR), norm_plane)
-
-        #rotation quaternion
-        #return [np.cos(theta / 2), rot_axis[0] * np.sin(theta / 2), rot_axis[1]  * np.sin(theta / 2), rot_axis[2]  * np.sin(theta / 2)]
-
-
 
         dp = np.dot(norm_plane, np.array(FRAME_DEFAULT_VECTOR))
+
+        #vector to rotate around
         rot_vector = np.cross(np.array(FRAME_DEFAULT_VECTOR), norm_plane)
+
+        #compose quat
         quat = np.array([1+dp , rot_vector[0], rot_vector[1], rot_vector[2]])
+
+        #normalize the quaternion
         quat = quat /np.linalg.norm(quat)
+
         return quat
-   
-   
    
    
     def find_plane_coefficients(self, p1, p2, p3):
@@ -319,16 +312,11 @@ class apriltag_node(Node):
         if not (tag_id in self.registered_tags):
             return
 
-        self.get_logger().info(f"Here {tag_id}, {self.map_tags}, {tag_id in self.map_tags}")
-
 
         if(tag_id in self.map_tags):
 
             #append to the frame detection
             self.frame_tags[self.tag_lookup[f"tag_{tag_id}"]["corner"]] = (t, time)
-
-        self.get_logger().info(f"tag keys {self.frame_tags.keys()}")
-
 
 
         # TF Publish
