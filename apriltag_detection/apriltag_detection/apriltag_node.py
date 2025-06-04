@@ -175,7 +175,7 @@ class apriltag_node(Node):
             self.get_logger().warn("To many tags to complete frame detection! How?")
 
             return
-        
+
         #get rid of the farthest tag if there are four
         if(len(self.frame_tags.keys()) == 4):
             #track the tag with the worst sum of discrepancy from the others
@@ -220,7 +220,7 @@ class apriltag_node(Node):
         if(0 in tag_set.keys() and 2 in tag_set.keys()):
             center = (np.array((float(tag_set[0][0][0]), float(tag_set[0][0][1]), float(tag_set[0][0][2]))) + np.array((float(tag_set[2][0][0]), float(tag_set[2][0][1]), float(tag_set[2][0][2])))) / 2
         else:
-            center = (np.array((float(tag_set[1][0][0]), float(tag_set[1][0][1]), float(tag_set[2][0][2]))) + np.array((float(tag_set[3][0][0]), float(tag_set[3][0][1]), float(tag_set[3][0][2])))) / 2
+            center = (np.array((float(tag_set[1][0][0]), float(tag_set[1][0][1]), float(tag_set[1][0][2]))) + np.array((float(tag_set[3][0][0]), float(tag_set[3][0][1]), float(tag_set[3][0][2])))) / 2
 
         #determine the plane's angle relative to the camera
         quaternion = self.get_vector_quaternion([k1, k2, k3])
