@@ -6,14 +6,14 @@ from launch.actions import ExecuteProcess
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='apriltag_detection',
-            executable='apriltag_node',
+            package='amr_apriltag',
+            executable='apriltag_node.py',
             name='apriltag_node'
         ),
         
          Node(
-            package='apriltag_detection',
-            executable='webcam_node',
+            package='amr_apriltag',
+            executable='webcam_node.py',
             name='webcam_node',
             parameters=[{"show_processed_video": False}]
         ),

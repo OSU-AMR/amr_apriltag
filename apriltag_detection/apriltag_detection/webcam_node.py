@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 # Filename: webcam_node_1080p_mjpeg.py
 
 import rclpy
