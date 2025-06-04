@@ -31,6 +31,27 @@ FRAME_STALE_TIME = 5 #seconds
 
 FRAME_DEFAULT_VECTOR = [0,0,-1]
 
+class low_pass_filtered_value():
+
+    #initialize the value
+    def __init__ (self, starting_value, cutoff_frequency, init_time):
+        self.value = starting_value
+        self.cutoff_frequency = cutoff_frequency
+        self.previous_time = init_time
+
+    def update(self, measurement, time):
+        #i know this is wrong but it also works
+
+        self.value = self.value * pow(10, -(time - self.previous_time) * self.cutoff_frequency) + measurement * (1 - pow(10, -(time - self.previous_time) * self.cutoff_frequency))
+        self.previous_time = time
+
+        return self.value
+
+
+    def set_cutoff_frequency(self, frequency):
+        self.cutoff_frequency = frequency
+
+
 class apriltag_node(Node):
     def __init__(self):
         super().__init__('apriltag_node')
@@ -64,6 +85,20 @@ class apriltag_node(Node):
             self.image_callback,
             10
         )
+
+        #init low pass filter 
+        self.map_x_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+        self.map_y_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+        self.map_z_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+        self.map_qx_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+        self.map_qy_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+        self.map_qz_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+        self.map_qw_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
+
+
+
+        #timer for param refresh
+        self.create_timer(5.0, self.refresh_parameters)
 
         self.get_logger().info(f"Subscribed to {self.image_topic}")
         if self.get_parameter("show_processed_video").get_parameter_value().bool_value:
@@ -107,6 +142,11 @@ class apriltag_node(Node):
 
 
         self.declare_parameter('show_processed_video', True)
+        self.declare_parameter('apply_map_frame_filtering', True)
+        self.declare_parameter('map_filtering_lowpass_threshold', 0.5)
+
+        self.apply_map_frame_filtering = self.get_parameter("apply_map_frame_filtering").value
+        self.map_filtering_lowpass_threshold = self.get_parameter("map_filtering_lowpass_threshold").value
         
         self.add_on_set_parameters_callback(self.parameter_callback)
 
@@ -225,7 +265,21 @@ class apriltag_node(Node):
         #determine the plane's angle relative to the camera
         quaternion = self.get_vector_quaternion([k1, k2, k3])
 
-        self.publish_frame_tf(header, quaternion, [center[0], center[1], center[2]])
+        if(self.apply_map_frame_filtering):
+            #filter the map frame
+            time = self.get_time_in_seconds()
+            x_filtered = self.map_x_filter.update(center[0], time)
+            y_filtered = self.map_y_filter.update(center[1], time)
+            z_filtered = self.map_z_filter.update(center[2], time)
+            qx_filtered = self.map_qx_filter.update(quaternion[1], time)
+            qy_filtered = self.map_qy_filter.update(quaternion[2], time)
+            qz_filtered = self.map_qz_filter.update(quaternion[3], time)
+            qw_filtered = self.map_qw_filter.update(quaternion[0], time)
+            
+            self.publish_frame_tf(header, [qw_filtered, qx_filtered, qy_filtered, qz_filtered], [x_filtered, y_filtered, z_filtered])
+
+        else:
+            self.publish_frame_tf(header, quaternion, [center[0], center[1], center[2]])
 
     def get_vector_quaternion(self, plane):
 
@@ -430,6 +484,10 @@ class apriltag_node(Node):
         tuple_time = self.get_clock().now().seconds_nanoseconds()
             
         return tuple_time[0] + tuple_time[1] * .000000001
+    
+    def refresh_parameters(self):
+        self.apply_map_frame_filtering = self.get_parameter("apply_map_frame_filtering").value
+        self.map_filtering_lowpass_threshold = self.get_parameter("map_filtering_lowpass_threshold").value
 
 def main(args=None):
     rclpy.init(args=args)
