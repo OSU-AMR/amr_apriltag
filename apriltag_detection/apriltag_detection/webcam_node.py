@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 # Filename: webcam_node_1080p_mjpeg.py
 
 import rclpy
@@ -23,7 +25,7 @@ class WebcamNode(Node):
         self.frame_id = 'camera_link'
         desired_width = 1280
         desired_height = 720
-        desired_fps = 25.0 # Use float 
+        desired_fps = 20.0 # Use float 
         # --- End Modified Settings ---
 
         self.cap = self.find_and_configure_camera(
@@ -156,17 +158,21 @@ class WebcamNode(Node):
         except cv2.error as cv_err:
              self.get_logger().error(f"OpenCV Error during processing/display: {cv_err}")
              # This might indicate a deeper issue with the frame or resources
+             
         except self.bridge.CvBridgeError as bridge_err:
             self.get_logger().error(f"CvBridge Error: {bridge_err}")
+
         except Exception as e:
             self.get_logger().error(f"Frame processing/publishing failed: {e}")
             self.get_logger().error(traceback.format_exc()) # Log full traceback for unexpected errors
 
     def destroy_node(self):
         self.get_logger().info("Cleaning up Webcam Node...")
+
         # Stop the timer first to prevent callbacks during cleanup
         if hasattr(self, 'timer') and self.timer:
             self.timer.cancel()
+
         # Release camera capture
         if hasattr(self, 'cap') and self.cap is not None and self.cap.isOpened():
             self.get_logger().info("Releasing video capture device...")
