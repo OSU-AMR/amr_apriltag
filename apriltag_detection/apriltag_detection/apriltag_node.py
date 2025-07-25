@@ -80,23 +80,22 @@ class apriltag_node(Node):
         self.frame_tags = dict()
 
         # === Subscriptions ===
-        # -- Camera 1 (USB) --
+        # Use the reliably fetched parameters
+        self.get_logger().info(f"Subscribing to USB camera at '{self.usb_camera_topic}'")
         self.subscription_cam1 = self.create_subscription(
             Image,
-            self.image_topic,
+            self.usb_camera_topic,
             self.image_callback_cam1,
             10
         )
-        self.get_logger().info(f"Subscribed to USB camera at '{self.image_topic}'")
-
-        # -- Camera 2 (IP) --
+        
+        self.get_logger().info(f"Subscribing to IP camera at '{self.ip_camera_topic}'")
         self.subscription_cam2 = self.create_subscription(
             Image,
-            '/ip_camera/image_raw', # Topic from ip_webcam_node
+            self.ip_camera_topic,
             self.image_callback_cam2,
             10
         )
-        self.get_logger().info("Subscribed to IP camera at '/ip_camera/image_raw'")
 
         #init low pass filter
         self.map_x_filter = low_pass_filtered_value(0, self.map_filtering_lowpass_threshold, self.get_time_in_seconds())
@@ -131,22 +130,44 @@ class apriltag_node(Node):
             quit()
 
     def _declare_and_get_params(self):
-        def declare_param(name, default): return self.declare_parameter(name, default).value
-
-        self.image_topic = declare_param('subscribe_topic', '/camera/image_raw')
-
-        self.tag_size = declare_param('tag_size', 0.079375)
-
-        self.camera_params = [
-            declare_param('camera_params.fx', 921.62),
-            declare_param('camera_params.fy', 923.23),
-            declare_param('camera_params.cx', 614.94),
-            declare_param('camera_params.cy', 360.22),
-        ]
-
+        # Declare all parameters with their default values first
+        self.declare_parameter('usb_camera_topic', '/camera/image_raw')
+        self.declare_parameter('ip_camera_topic', '/ip_camera/image_raw')
+        self.declare_parameter('tag_size', 0.079375)
         self.declare_parameter('show_processed_video', True)
         self.declare_parameter('apply_map_frame_filtering', True)
         self.declare_parameter('map_filtering_lowpass_threshold', 0.5)
+
+        # --- CAMERA 1 (USB) PARAMETERS ---
+        self.declare_parameter('usb_cam.fx', 921.62)
+        self.declare_parameter('usb_cam.fy', 923.23)
+        self.declare_parameter('usb_cam.cx', 614.94)
+        self.declare_parameter('usb_cam.cy', 360.22)
+        
+        # --- CAMERA 2 (IP) PARAMETERS ---
+        self.declare_parameter('ip_cam.fx', 461.839808) # Placeholder - YOU MUST CALIBRATE
+        self.declare_parameter('ip_cam.fy', 458.096570) # Placeholder - YOU MUST CALIBRATE
+        self.declare_parameter('ip_cam.cx', 310.772398) # Placeholder - YOU MUST CALIBRATE
+        self.declare_parameter('ip_cam.cy', 220.487791) # Placeholder - YOU MUST CALIBRATE
+        
+
+        # Now, get the final values of the parameters
+        self.usb_camera_topic = self.get_parameter('usb_camera_topic').get_parameter_value().string_value
+        self.ip_camera_topic = self.get_parameter('ip_camera_topic').get_parameter_value().string_value
+        self.tag_size = self.get_parameter('tag_size').get_parameter_value().double_value
+        
+        self.usb_camera_params = [
+            self.get_parameter('usb_cam.fx').get_parameter_value().double_value,
+            self.get_parameter('usb_cam.fy').get_parameter_value().double_value,
+            self.get_parameter('usb_cam.cx').get_parameter_value().double_value,
+            self.get_parameter('usb_cam.cy').get_parameter_value().double_value,
+        ]
+        self.ip_camera_params = [
+            self.get_parameter('ip_cam.fx').get_parameter_value().double_value,
+            self.get_parameter('ip_cam.fy').get_parameter_value().double_value,
+            self.get_parameter('ip_cam.cx').get_parameter_value().double_value,
+            self.get_parameter('ip_cam.cy').get_parameter_value().double_value,
+        ]
 
         self.apply_map_frame_filtering = self.get_parameter("apply_map_frame_filtering").value
         self.map_filtering_lowpass_threshold = self.get_parameter("map_filtering_lowpass_threshold").value
@@ -165,14 +186,14 @@ class apriltag_node(Node):
 
     # --- Callback for Camera 1 (USB) ---
     def image_callback_cam1(self, msg: Image):
-        self.process_image(msg, "cam1_detections", self.last_visible_tags_cam1)
+        self.process_image(msg, "cam1_detections", self.last_visible_tags_cam1, self.usb_camera_params)
 
     # --- Callback for Camera 2 (IP) ---
     def image_callback_cam2(self, msg: Image):
-        self.process_image(msg, "cam2_detections", self.last_visible_tags_cam2)
+        self.process_image(msg, "cam2_detections", self.last_visible_tags_cam2, self.ip_camera_params)
 
     # --- Generic Image Processing Function ---
-    def process_image(self, msg: Image, window_name: str, last_visible_tags: set):
+    def process_image(self, msg: Image, window_name: str, last_visible_tags: set, camera_params: list):
         try:
             image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -183,8 +204,11 @@ class apriltag_node(Node):
         current_visible_tags = set()
 
         try:
-            tags = self.detector.detect(gray, True, self.camera_params, self.tag_size)
+            tags = self.detector.detect(gray, True, camera_params, self.tag_size)
             post_detection_time = self.get_time_in_seconds()
+
+            if tags:
+                self.get_logger().info(f"Found {len(tags)} tags in '{window_name}'")
 
             for tag in tags:
                 tag_id = tag.tag_id
@@ -212,68 +236,75 @@ class apriltag_node(Node):
     def process_map_frame(self, time, header):
 
         #remove staled tags
-        for tag in self.frame_tags.keys():
-            if(self.frame_tags[tag][1] + FRAME_STALE_TIME < time):
-                self.frame_tags.pop(tag)
-                self.get_logger().info(f"Tag {tag} has staled. Current time: {time}, tag time: {self.frame_tags[tag][1]}")
+        for tag_key in list(self.frame_tags.keys()):
+            if(self.frame_tags[tag_key][1] + FRAME_STALE_TIME < time):
+                self.frame_tags.pop(tag_key)
+                self.get_logger().info(f"Tag {tag_key} has staled. Current time: {time}, tag time: {self.frame_tags[tag_key][1]}")
 
         tag_set = self.frame_tags
 
         #make sure there are enough staled keys to begin
-        if(len(self.frame_tags.keys()) < 3):
+        if(len(tag_set.keys()) < 3):
             return
 
-        if(len(self.frame_tags.keys()) > 4):
+        if(len(tag_set.keys()) > 4):
             #too many tags
             self.get_logger().warn("To many tags to complete frame detection! How?")
-
             return
 
         #get rid of the farthest tag if there are four
-        if(len(self.frame_tags.keys()) == 4):
+        if(len(tag_set.keys()) == 4):
             #track the tag with the worst sum of discrepancy from the others
             smallest_discrepancy = None
             smallest_discrepancy_index = 0
 
-            for tag in tag_set.keys():
+            for tag_key in tag_set.keys():
                 #the tag's point
-                p4  = (float(tag_set[tag][0][0]), float(tag_set[tag][0][1]), float(tag_set[tag][0][2]))
+                p4  = (float(tag_set[tag_key][0][0]), float(tag_set[tag_key][0][1]), float(tag_set[tag_key][0][2]))
 
                 # get the other three transforms
-                p1 = (float(tag_set[(tag + 1) % 4][0][0]), float(tag_set[(tag + 1) % 4][0][1]), float(tag_set[(tag + 1) % 4][0][2]))
-                p2 = (float(tag_set[(tag + 2) % 4][0][0]), float(tag_set[(tag + 2) % 4][0][1]), float(tag_set[(tag + 2) % 4][0][2]))
-                p3 = (float(tag_set[(tag + 3) % 4][0][0]), float(tag_set[(tag + 3) % 4][0][1]), float(tag_set[(tag + 3) % 4][0][2]))
+                other_keys = list(tag_set.keys())
+                other_keys.remove(tag_key)
+                p1 = (float(tag_set[other_keys[0]][0][0]), float(tag_set[other_keys[0]][0][1]), float(tag_set[other_keys[0]][0][2]))
+                p2 = (float(tag_set[other_keys[1]][0][0]), float(tag_set[other_keys[1]][0][1]), float(tag_set[other_keys[1]][0][2]))
+                p3 = (float(tag_set[other_keys[2]][0][0]), float(tag_set[other_keys[2]][0][1]), float(tag_set[other_keys[2]][0][2]))
 
                 dist = self.get_4th_point_distance(p1, p2, p3, p4)
                 if(smallest_discrepancy is None) or (dist < smallest_discrepancy):
                     smallest_discrepancy = dist
-                    smallest_discrepancy_index = tag
+                    smallest_discrepancy_index = tag_key
 
             #all points colinear - do not pub
             if(smallest_discrepancy is None):
-                self.get_logger().warn(f"Colinear detections, not updating map frame. {(float(tag_set[tag_set.keys()[0]][0][0]), float(tag_set[tag_set.keys()[0]][0][1]), float(tag_set[tag_set.keys()[0]][0][2]))}, {(float(tag_set[tag_set.keys()[1]][0][0]), float(tag_set[tag_set.keys()[1]][0][1]), float(tag_set[tag_set.keys()[1]][0][2]))}, {(float(tag_set[tag_set.keys()[2]][0][0]), float(tag_set[tag_set.keys()[2]][0][1]), float(tag_set[tag_set.keys()[2]][0][2]))}")
+                self.get_logger().warn(f"Colinear detections, not updating map frame.")
                 return
 
             #keep the best combination (remove the points with the shortest perpendiculr distance)
             tag_set.pop(smallest_discrepancy_index)
-
+        
+        tag_keys = list(tag_set.keys())
         #get the best plane
         k1, k2 ,k3 = self.find_plane_coefficients(
-            (float(tag_set[list(tag_set.keys())[0]][0][0]), float(tag_set[list(tag_set.keys())[0]][0][1]), float(tag_set[list(tag_set.keys())[0]][0][2])),
-            (float(tag_set[list(tag_set.keys())[1]][0][0]), float(tag_set[list(tag_set.keys())[1]][0][1]), float(tag_set[list(tag_set.keys())[1]][0][2])),
-            (float(tag_set[list(tag_set.keys())[2]][0][0]), float(tag_set[list(tag_set.keys())[2]][0][1]), float(tag_set[list(tag_set.keys())[2]][0][2])))
+            (float(tag_set[tag_keys[0]][0][0]), float(tag_set[tag_keys[0]][0][1]), float(tag_set[tag_keys[0]][0][2])),
+            (float(tag_set[tag_keys[1]][0][0]), float(tag_set[tag_keys[1]][0][1]), float(tag_set[tag_keys[1]][0][2])),
+            (float(tag_set[tag_keys[2]][0][0]), float(tag_set[tag_keys[2]][0][1]), float(tag_set[tag_keys[2]][0][2])))
 
         if(k1 is None):
             #detections are colinear
-            self.get_logger().warn(f"Colinear detections, not updating map frame. {(float(tag_set[tag_set.keys()[0]][0][0]), float(tag_set[tag_set.keys()[0]][0][1]), float(tag_set[tag_set.keys()[0]][0][2]))}, {(float(tag_set[tag_set.keys()[1]][0][0]), float(tag_set[tag_set.keys()[1]][0][1]), float(tag_set[tag_set.keys()[1]][0][2]))}, {(float(tag_set[tag_set.keys()[2]][0][0]), float(tag_set[tag_set.keys()[2]][0][1]), float(tag_set[tag_set.keys()[2]][0][2]))}")
+            self.get_logger().warn(f"Colinear detections, not updating map frame.")
             return
 
         #determine the center point of the plane - find cp of two points on the corner from each other
         center = np.array((0,0,0))
         if(0 in tag_set.keys() and 2 in tag_set.keys()):
             center = (np.array((float(tag_set[0][0][0]), float(tag_set[0][0][1]), float(tag_set[0][0][2]))) + np.array((float(tag_set[2][0][0]), float(tag_set[2][0][1]), float(tag_set[2][0][2])))) / 2
-        else:
+        elif (1 in tag_set.keys() and 3 in tag_set.keys()):
             center = (np.array((float(tag_set[1][0][0]), float(tag_set[1][0][1]), float(tag_set[1][0][2]))) + np.array((float(tag_set[3][0][0]), float(tag_set[3][0][1]), float(tag_set[3][0][2])))) / 2
+        else: # Fallback if diagonal tags aren't present
+             p1 = np.array((float(tag_set[tag_keys[0]][0][0]), float(tag_set[tag_keys[0]][0][1]), float(tag_set[tag_keys[0]][0][2])))
+             p2 = np.array((float(tag_set[tag_keys[1]][0][0]), float(tag_set[tag_keys[1]][0][1]), float(tag_set[tag_keys[1]][0][2])))
+             p3 = np.array((float(tag_set[tag_keys[2]][0][0]), float(tag_set[tag_keys[2]][0][1]), float(tag_set[tag_keys[2]][0][2])))
+             center = (p1+p2+p3)/3
 
         #determine the plane's angle relative to the camera
         quaternion = self.get_vector_quaternion([k1, k2, k3])
@@ -331,7 +362,10 @@ class apriltag_node(Node):
         b = np.ones(3)
 
         # Solve for [k1, k2, k3] in A @ [k1, k2, k3] = b
-        k = np.linalg.solve(A, b)
+        try:
+            k = np.linalg.solve(A, b)
+        except np.linalg.LinAlgError:
+            return None, None, None
 
         return k[0], k[1], k[2]
 
@@ -364,7 +398,7 @@ class apriltag_node(Node):
         t = self.R_flip @ tag.pose_t.reshape(3, 1)
 
         # Smoothing
-        tag_key = f"{tag_id}"
+        tag_key = f"tag_{tag.tag_id}"
         alpha = self.smoothing_alpha
 
         if tag_key in self.tag_pose_cache:
