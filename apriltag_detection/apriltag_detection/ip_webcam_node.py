@@ -12,10 +12,11 @@ class IpWebcamNode(Node):
         super().__init__('ip_webcam_node')
         
         # --- Parameters ---
-        self.declare_parameter('camera_url', 'http://10.254.239.1/video_feed')
+        self.declare_parameter('camera_url', 'http://10.254.239.1:5000/video_feed')
         self.declare_parameter('topic_name', '/ip_camera/image_raw')
         self.declare_parameter('frequency', 30.0) # Hz
         self.declare_parameter('show_video', True) # Defaulting to True for convenience
+        self.declare_parameter('frame_id', 'ip_camera_link')
         
         # --- ADD DISPLAY SIZE PARAMETERS ---
         self.declare_parameter('display_width', 1280)

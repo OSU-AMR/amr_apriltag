@@ -38,19 +38,9 @@ def generate_launch_description():
             package='amr_apriltag',
             executable='webcam_node.py',
             name='webcam_node',
-            parameters=[{"display_enabled": False}]
-<<<<<<< Updated upstream
-        ),
-         Node(
-            package='amr_apriltag',
-            executable='ip_webcam_node.py',
-            name='ip_webcam_node',
-            parameters=[
-                
-                {'ip_camera_url': 'http://10.254.239.1/video_feed'},{'show_video': False}
-            ]
-=======
->>>>>>> Stashed changes
+            parameters=[{"display_enabled": False},
+                        {"frame_id": "usb_camera_link"}]
+            
         ),
         Node(
             package='amr_apriltag',
@@ -58,7 +48,8 @@ def generate_launch_description():
             name='ip_webcam_node',
             parameters=[
                 {'ip_camera_url': 'http://10.254.239.1:5000/video_feed'},
-                {'show_video': False}
+                {'show_video': False},
+                {"frame_id": "ip_camera_link"} 
             ]
         ),
         static_tf_map_usb,

@@ -26,6 +26,7 @@ class WebcamNode(Node):
         desired_width = 1280
         desired_height = 720
         desired_fps = 30.0 # Use float 
+        self.declare_parameter('frame_id', 'usb_camera_link')
         # --- End Modified Settings ---
 
         self.cap = self.find_and_configure_camera(
