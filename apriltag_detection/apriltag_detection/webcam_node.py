@@ -10,7 +10,7 @@ from cv_bridge import CvBridge
 import traceback
 import sys
 import time # Import time for potential delays
-
+from cv_bridge import CvBridge, CvBridgeError
 class WebcamNode(Node):
     def __init__(self):
         super().__init__('webcam_node')
@@ -22,7 +22,7 @@ class WebcamNode(Node):
         # --- Modified Settings ---
         start_camera_index = 0
         topic_name = 'camera/image_raw'
-        self.frame_id = 'camera_link'
+        self.frame_id = 'usb_camera_link'
         desired_width = 1280
         desired_height = 720
         desired_fps = 30.0 # Use float 
@@ -159,7 +159,7 @@ class WebcamNode(Node):
              self.get_logger().error(f"OpenCV Error during processing/display: {cv_err}")
              # This might indicate a deeper issue with the frame or resources
              
-        except self.bridge.CvBridgeError as bridge_err:
+        except CvBridgeError as bridge_err:
             self.get_logger().error(f"CvBridge Error: {bridge_err}")
 
         except Exception as e:

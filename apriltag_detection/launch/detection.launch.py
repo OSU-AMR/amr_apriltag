@@ -6,13 +6,13 @@ from launch.actions import ExecuteProcess
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='apriltag_detection',
+            package='amr_apriltag',
             executable='apriltag_node',
             name='apriltag_node'
         ),
         
          Node(
-            package='apriltag_detection',
+            package='amr_apriltag',
             executable='webcam_node',
             name='webcam_node'
         ),
