@@ -31,6 +31,7 @@ MAP_TAG_COLOR = (255, 165, 0)
 OBSTACLE_TAG_COLOR = (0, 39, 76)
 FRAME_STALE_TIME = 5  # seconds
 FRAME_DEFAULT_VECTOR = [0, 0, -1]
+TAG_GRACE_PERIOD = 0.5  # seconds to wait before declaring a tag "gone"
 
 
 # Helper class for low-pass filtering
@@ -68,6 +69,7 @@ class ApriltagNode(Node):
 
         # === State ===
         self.tag_pose_cache = {}
+        self.tag_last_seen = {}   # NEW: store last seen times
         self.smoothing_alpha = 0.2
         self.last_visible_tags_cam1 = set()
         self.last_visible_tags_cam2 = set()
@@ -162,9 +164,13 @@ class ApriltagNode(Node):
         except Exception as e:
             self.get_logger().error(f"Detection error for {window_name}: {e}")
 
+        now = self.get_clock().now().nanoseconds / 1e9
+
         disappeared_tags = last_visible_tags - current_visible_tags
         for tag_id in disappeared_tags:
-            self._publish_stale_tf(cam_frame, tag_id)
+            last_seen = self.tag_last_seen.get(tag_id, None)
+            if last_seen is None or (now - last_seen) > TAG_GRACE_PERIOD:
+                self._publish_stale_tf(cam_frame, tag_id)
 
         last_visible_tags.clear()
         last_visible_tags.update(current_visible_tags)
@@ -184,8 +190,16 @@ class ApriltagNode(Node):
         smoothed_t = self.smoothing_alpha * t + (1 - self.smoothing_alpha) * self.tag_pose_cache.get(tag_key, t)
         self.tag_pose_cache[tag_key] = smoothed_t
 
-        # Publish TF relative to explicit cam_frame
+        # Record last seen time
+        self.tag_last_seen[tag.tag_id] = self.get_clock().now().nanoseconds / 1e9
+
+        # --- Existing publish: camera-specific frame ---
         self._publish_tf(cam_frame, f"{cam_frame}_tag_{tag.tag_id}", R, smoothed_t)
+
+        # --- NEW publish: obstacle short-name frames (for course_manager.py) ---
+        if tag.tag_id in self.obstacle_tags:
+            short_name = f"tag_{tag.tag_id}"
+            self._publish_tf(cam_frame, short_name, R, smoothed_t)
 
         # Draw overlay
         color = (0, 255, 0)
