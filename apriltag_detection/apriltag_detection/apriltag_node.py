@@ -136,7 +136,8 @@ class ApriltagNode(Node):
 
     def _initialize_detector(self):
         try:
-            return Detector(families='tag36h11')
+            return Detector(families='tag36h11',
+                            quad_decimate=1.5)
         except Exception as e:
             self.get_logger().error(f"Failed to initialize detector: {e}")
             rclpy.shutdown()
