@@ -59,7 +59,7 @@ class WebcamNode(Node):
             # Try specifying the backend explicitly if default doesn't work well
             cap = cv2.VideoCapture(index, cv2.CAP_V4L2) # Or cv2.CAP_DSHOW on Windows, etc.
             #cap = cv2.VideoCapture(index)
-
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             if not cap.isOpened():
                 self.get_logger().warn(f"Index {index}: Failed to open.")
                 cap.release()

@@ -15,13 +15,13 @@ def generate_launch_description():
         ]
     )
 
-    # Static transform: map → ip_camera_link (UPDATED)
+    # Static transform: map → ip_camera_link (NEW, quaternion version)
     static_tf_map_ip = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
-            '2.65', '-1.25', '2.17',                   # New translation (x y z)
-            '0.036439', '0.235108', '-0.008821', '0.971246',   # New quaternion (x y z w)
+            '2.3', '-1.145', '1.8',                      # translation (x y z)
+            '0.029687', '0.159697', '0.009624', '0.986673',   # quaternion (x y z w)
             'map',
             'ip_camera_link'
         ]

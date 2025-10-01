@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 import math
 import rclpy
+import threading  # --- NEW ---
 from rclpy.node import Node
 from rclpy.time import Time
 from rclpy.duration import Duration
@@ -18,63 +19,42 @@ import tf2_ros
 from tf_transformations import (
     quaternion_from_matrix,
     rotation_matrix,
-    quaternion_multiply,
-    quaternion_from_euler,
-    quaternion_matrix,
 )
 from ament_index_python.packages import get_package_share_directory
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 # Constants
 APRIL_TAG_LOOKUP_SUB_PATH = "test_data/april_tag_lookup.yaml"
 ROBOT_TAG_COLOR = (172, 16, 48)
 MAP_TAG_COLOR = (255, 165, 0)
 OBSTACLE_TAG_COLOR = (0, 39, 76)
-FRAME_STALE_TIME = 5  # seconds
-FRAME_DEFAULT_VECTOR = [0, 0, -1]
-TAG_GRACE_PERIOD = 0.5  # seconds to wait before declaring a tag "gone"
-
-
-# Helper class for low-pass filtering
-class low_pass_filtered_value():
-    def __init__(self, starting_value, cutoff_frequency, init_time):
-        self.value = starting_value
-        self.cutoff_frequency = cutoff_frequency
-        self.previous_time = init_time
-
-    def update(self, measurement, time):
-        dt = time - self.previous_time
-        if dt <= 0:
-            return self.value
-        alpha = (2 * math.pi * dt * self.cutoff_frequency) / (2 * math.pi * dt * self.cutoff_frequency + 1)
-        self.value = alpha * measurement + (1.0 - alpha) * self.value
-        self.previous_time = time
-        return self.value
-
+TAG_GRACE_PERIOD = 0.5
 
 class ApriltagNode(Node):
     def __init__(self):
         super().__init__('apriltag_node')
-        self.get_logger().info("Starting AprilTag Node with dual camera support")
+        self.get_logger().info("Starting AprilTag Node with anti-latency logic")
 
         # === Tools ===
         self.bridge = CvBridge()
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-
-        # Choose ONE parent frame for the map tree
-        self.map_parent_frame = 'usb_camera_link'
-
         self.R_flip = rotation_matrix(math.pi, [1.0, 0.0, 0.0])[:3, :3]
 
         # === State ===
         self.tag_pose_cache = {}
-        self.tag_last_seen = {}   # NEW: store last seen times
+        self.tag_last_seen = {}
         self.smoothing_alpha = 0.2
         self.last_visible_tags_cam1 = set()
         self.last_visible_tags_cam2 = set()
-        self.frame_tags = {}
 
+        # --- NEW: Anti-Latency Frame Handling ---
+        self.latest_frame_cam1 = None
+        self.latest_frame_cam2 = None
+        self.lock_cam1 = threading.Lock()
+        self.lock_cam2 = threading.Lock()
+        
         # === Load Parameters and Data ===
         self._declare_and_get_params()
         self.load_in_tag_data()
@@ -82,9 +62,24 @@ class ApriltagNode(Node):
         # === AprilTag Detector ===
         self.detector = self._initialize_detector()
 
-        # === Subscriptions ===
-        self.subscription_cam1 = self.create_subscription(Image, self.usb_camera_topic, self.image_callback_cam1, 10)
-        self.subscription_cam2 = self.create_subscription(Image, self.ip_camera_topic, self.image_callback_cam2, 10)
+        # === QoS Profile for low-latency image handling ===
+        qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
+        # === Subscriptions (only store frames) ===
+        self.subscription_cam1 = self.create_subscription(
+            Image, self.usb_camera_topic, self.image_callback_cam1, qos)
+        self.subscription_cam2 = self.create_subscription(
+            Image, self.ip_camera_topic, self.image_callback_cam2, qos)
+        
+        # --- NEW: Dedicated Processing Timer ---
+        # This timer runs detection at a fixed rate, preventing overload.
+        # 20 Hz is a good starting point.
+        processing_rate = 15.0
+        self.create_timer(1.0 / processing_rate, self.process_latest_frames)
 
         self.get_logger().info("AprilTag node has started successfully.")
 
@@ -106,14 +101,16 @@ class ApriltagNode(Node):
         self.declare_parameter('ip_camera_topic', '/ip_camera/image_raw')
         self.declare_parameter('tag_size', 0.079375)
         self.declare_parameter('show_processed_video', True)
+        # USB Camera Intrinsics
         self.declare_parameter('usb_cam.fx', 921.62)
         self.declare_parameter('usb_cam.fy', 923.23)
         self.declare_parameter('usb_cam.cx', 614.94)
         self.declare_parameter('usb_cam.cy', 360.22)
-        self.declare_parameter('ip_cam.fx', 760.496)
-        self.declare_parameter('ip_cam.fy', 757.610)
-        self.declare_parameter('ip_cam.cx', 622.506)
-        self.declare_parameter('ip_cam.cy', 326.603)
+        # IP Camera Intrinsics (Update with your latest calibration)
+        self.declare_parameter('ip_cam.fx', 609.75)
+        self.declare_parameter('ip_cam.fy', 609.75)
+        self.declare_parameter('ip_cam.cx', 597.88)
+        self.declare_parameter('ip_cam.cy', 324.10)
         self.refresh_parameters()
         self.add_on_set_parameters_callback(self.parameter_callback)
 
@@ -136,17 +133,41 @@ class ApriltagNode(Node):
 
     def _initialize_detector(self):
         try:
+            # --- THIS IS YOUR MAIN PERFORMANCE KNOB ---
+            # Increase quad_decimate for faster processing at the cost of
+            # detecting smaller/more distant tags. Start high (e.g., 3.0).
             return Detector(families='tag36h11',
-                            quad_decimate=1.5)
+                            quad_decimate=1,
+                            nthreads=4,
+                            quad_sigma=0.0,
+                            refine_edges=1)
         except Exception as e:
             self.get_logger().error(f"Failed to initialize detector: {e}")
             rclpy.shutdown()
 
     def image_callback_cam1(self, msg: Image):
-        self.process_image(msg, "cam1_usb", self.last_visible_tags_cam1, self.usb_camera_params, "usb_camera_link")
+        with self.lock_cam1:
+            self.latest_frame_cam1 = msg
 
     def image_callback_cam2(self, msg: Image):
-        self.process_image(msg, "cam2_ip", self.last_visible_tags_cam2, self.ip_camera_params, "ip_camera_link")
+        with self.lock_cam2:
+            self.latest_frame_cam2 = msg
+
+    def process_latest_frames(self):
+        frame_cam1, frame_cam2 = None, None
+        with self.lock_cam1:
+            if self.latest_frame_cam1:
+                frame_cam1 = self.latest_frame_cam1
+                self.latest_frame_cam1 = None  # Consume frame
+        with self.lock_cam2:
+            if self.latest_frame_cam2:
+                frame_cam2 = self.latest_frame_cam2
+                self.latest_frame_cam2 = None  # Consume frame
+
+        if frame_cam1:
+            self.process_image(frame_cam1, "cam1_usb", self.last_visible_tags_cam1, self.usb_camera_params, "usb_camera_link")
+        if frame_cam2:
+            self.process_image(frame_cam2, "cam2_ip", self.last_visible_tags_cam2, self.ip_camera_params, "ip_camera_link")
 
     def process_image(self, msg: Image, window_name: str, last_visible_tags: set, camera_params: list, cam_frame: str):
         try:
@@ -157,6 +178,8 @@ class ApriltagNode(Node):
             return
 
         current_visible_tags = set()
+        start_time = self.get_clock().now()
+
         try:
             tags = self.detector.detect(gray, True, camera_params, self.tag_size)
             for tag in tags:
@@ -165,8 +188,19 @@ class ApriltagNode(Node):
         except Exception as e:
             self.get_logger().error(f"Detection error for {window_name}: {e}")
 
-        now = self.get_clock().now().nanoseconds / 1e9
+# --- NEW: Measure detection time ---
+        detection_ms = (self.get_clock().now() - start_time).nanoseconds / 1e6
 
+# --- NEW: Measure end-to-end pipeline latency ---
+        msg_time = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        now_time = self.get_clock().now().nanoseconds * 1e-9
+        pipeline_latency_ms = (now_time - msg_time) * 1000
+
+        self.get_logger().info(
+            f"[{window_name}] Detection time: {detection_ms:.2f} ms | End-to-end latency: {pipeline_latency_ms:.2f} ms",
+            throttle_duration_sec=1.0
+        )
+        now = self.get_clock().now().nanoseconds / 1e9
         disappeared_tags = last_visible_tags - current_visible_tags
         for tag_id in disappeared_tags:
             last_seen = self.tag_last_seen.get(tag_id, None)
@@ -190,26 +224,16 @@ class ApriltagNode(Node):
 
         smoothed_t = self.smoothing_alpha * t + (1 - self.smoothing_alpha) * self.tag_pose_cache.get(tag_key, t)
         self.tag_pose_cache[tag_key] = smoothed_t
-
-        # Record last seen time
         self.tag_last_seen[tag.tag_id] = self.get_clock().now().nanoseconds / 1e9
 
-        # --- Existing publish: camera-specific frame ---
         self._publish_tf(cam_frame, f"{cam_frame}_tag_{tag.tag_id}", R, smoothed_t)
-
-        # --- NEW publish: obstacle short-name frames (for course_manager.py) ---
         if tag.tag_id in self.obstacle_tags:
-            short_name = f"tag_{tag.tag_id}"
-            self._publish_tf(cam_frame, short_name, R, smoothed_t)
+            self._publish_tf(cam_frame, f"tag_{tag.tag_id}", R, smoothed_t)
 
-        # Draw overlay
         color = (0, 255, 0)
-        if tag.tag_id in self.map_tags:
-            color = MAP_TAG_COLOR
-        elif tag.tag_id in self.robot_tags:
-            color = ROBOT_TAG_COLOR
-        elif tag.tag_id in self.obstacle_tags:
-            color = OBSTACLE_TAG_COLOR
+        if tag.tag_id in self.map_tags: color = MAP_TAG_COLOR
+        elif tag.tag_id in self.robot_tags: color = ROBOT_TAG_COLOR
+        elif tag.tag_id in self.obstacle_tags: color = OBSTACLE_TAG_COLOR
         self._draw_tag(image, tag, color)
 
     def _publish_tf(self, parent_frame, child_frame, R, t):
@@ -256,7 +280,6 @@ class ApriltagNode(Node):
                 self.get_logger().info(f"Live display toggled to: {param.value}")
         return SetParametersResult(successful=True)
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = ApriltagNode()
@@ -267,7 +290,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

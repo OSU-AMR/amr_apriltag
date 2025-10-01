@@ -38,7 +38,8 @@ class IpWebcamNode(Node):
         self.bridge = CvBridge()
         
         # --- Camera Capture ---
-        self.cap = cv2.VideoCapture(camera_url)
+        self.cap = cv2.VideoCapture(camera_url, cv2.CAP_FFMPEG)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # 🚀 Drop old frames
         if not self.cap.isOpened():
             self.get_logger().error(f'Could not open video stream at URL: {camera_url}')
             raise SystemExit 
