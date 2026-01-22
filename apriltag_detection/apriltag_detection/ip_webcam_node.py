@@ -6,6 +6,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 import cv2
 from cv_bridge import CvBridge
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy # <-- ADDED IMPORT
 
 class IpWebcamNode(Node):
     def __init__(self):
@@ -32,8 +33,16 @@ class IpWebcamNode(Node):
         self.display_width = self.get_parameter('display_width').get_parameter_value().integer_value
         self.display_height = self.get_parameter('display_height').get_parameter_value().integer_value
 
+        # === QoS Profile for low-latency image handling ===
+        qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        # ^-- ADDED THIS QOS BLOCK
+
         # --- Node Initialization ---
-        self.publisher_ = self.create_publisher(Image, topic_name, 10)
+        self.publisher_ = self.create_publisher(Image, topic_name, qos) # <-- MODIFIED THIS LINE
         self.timer = self.create_timer(1.0/frequency, self.timer_callback)
         self.bridge = CvBridge()
         

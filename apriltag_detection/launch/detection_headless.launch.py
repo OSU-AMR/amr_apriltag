@@ -8,7 +8,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
-            '2.7', '-1.17', '2.1',                       # translation (x y z)
+            '2.675', '-1.19', '2.1',                       # translation (x y z)
             '0.188683', '-0.188532', '-0.681218', '0.681760',  # quaternion (x y z w)
             'map',
             'usb_camera_link'
@@ -20,8 +20,8 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
-            '2.3', '-1.145', '1.8',                      # translation (x y z)
-            '0.029687', '0.159697', '0.009624', '0.986673',   # quaternion (x y z w)
+            '2.4', '-1.0', '2.05',                      # translation (x y z)
+            '0.995', '-0.003', '-0.171', '-0.0305',   # quaternion (x y z w)
             'map',
             'ip_camera_link'
         ]

@@ -11,6 +11,8 @@ import traceback
 import sys
 import time # Import time for potential delays
 from cv_bridge import CvBridge, CvBridgeError
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy # <-- ADDED IMPORT
+
 class WebcamNode(Node):
     def __init__(self):
         super().__init__('webcam_node')
@@ -43,7 +45,16 @@ class WebcamNode(Node):
 
         self.get_logger().info(f"Publishing to: {topic_name}")
         self.bridge = CvBridge()
-        self.image_publisher = self.create_publisher(Image, topic_name, 10)
+
+        # === QoS Profile for low-latency image handling ===
+        qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        # ^-- ADDED THIS QOS BLOCK
+
+        self.image_publisher = self.create_publisher(Image, topic_name, qos) # <-- MODIFIED THIS LINE
 
         # --- Adjust Timer based on FPS ---
         timer_period = 1.0 / desired_fps
