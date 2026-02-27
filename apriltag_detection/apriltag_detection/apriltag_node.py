@@ -27,7 +27,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 APRIL_TAG_LOOKUP_SUB_PATH = "test_data/april_tag_lookup.yaml"
 ROBOT_TAG_COLOR = (172, 16, 48)
 MAP_TAG_COLOR = (255, 165, 0)
-OBSTACLE_TAG_COLOR = (0, 39, 76)
+OBSTACLE_TAG_COLOR = (0, 0, 255)
 TAG_GRACE_PERIOD = 0.5
 
 class ApriltagNode(Node):
