@@ -8,20 +8,20 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
-            '2.675', '-1.19', '2.1',                       # translation (x y z)
+            '2.675', '-0.95', '2.1',                       # translation (x y z)
             '0.188683', '-0.188532', '-0.681218', '0.681760',  # quaternion (x y z w)
             'map',
             'usb_camera_link'
         ]
     )
 
-    # Static transform: map → ip_camera_link (NEW, quaternion version)
+    # Static transform: map → ip_camera_link
     static_tf_map_ip = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments=[
-            '2.223018', '-1.1254171', '1.78',                      # translation (x y z)
-            '0.988008', '0.005208', '-0.170000', '-0.017349',   # quaternion (x y z w)
+            '2.375', '-0.9', '1.78',                       # translation (x y z)
+            '0.988008', '0.005208', '-0.1550000', '-0.017349',  # quaternion (x y z w)
             'map',
             'ip_camera_link'
         ]
